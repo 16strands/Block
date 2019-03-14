@@ -16,6 +16,6 @@ int main() {
             }
         }
     }
-    closeDevice(t);
+    closeBlockDevice(t);
     printf( "device tests complete\n");
 }

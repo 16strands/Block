@@ -21,12 +21,14 @@
 
     API overview:
 
-    The BlockDevice constructor, when given three arguments, creates
-    a new, empty block device. The two-argument version of the
-    constructor opens the file given as its first argument.
+    createBlockDevice creates a new, blank block device.
     The blockSize argument specifies how many bytes there are per
     block. Real world file systems have had blocks as small as 512
     bytes, and as large as 4096 bytes.
+
+    openBlockDevice opens a block device file, but doesn't initialize
+    its values - the caller needs to do that (see
+    bootstrapDeviceFromMasterBlock(block_device_t bd, uint64_t magic))
 
     The action end of a block device are the readBlock and writeBlock
     calls. They both take a block number and a buffer. readBlock fills
@@ -48,10 +50,24 @@ typedef struct BlockDevice {
     int m_bytesPerBlock;
 } BlockDevice, *block_device_t;
 
+// create a fresh block device with the given filename, bytes per
+// block, and block count.
 block_device_t createBlockDevice(char * deviceName, int blockSize, int blockCount);
 
-void closeDevice(block_device_t bd);
+// when you open a block device (that has been created already), all you have is its name
+block_device_t openBlockDevice(char * deviceName);
+// so we rely on the Master Block functions to call setupBlockDevice
+// to finish assigning its parameters.
+void setupBlockDevice(block_device_t bd, int blockCount, int bytesPerBlock);
 
-int readBlock(block_device_t bd, int blockNum, char *buff);
+// closes device, 0 is good, <0 an error occurred
+int closeBlockDevice(block_device_t bd);
 
-int writeBlock(block_device_t bd, int blockNum, const char *buff);
+// readBlock and writeBlock return 0 on success, <0 on error
+int readBlock(block_device_t bd, disk_addr_t blockNum, char *buff);
+
+int writeBlock(block_device_t bd, disk_addr_t blockNum, const char *buff);
+
+// Special function for bootstrapping the block device -
+// allows you to read a non-blocksize # of bytes
+int readFirstBytes(block_device_t bd, char *buffer, int numBytes);

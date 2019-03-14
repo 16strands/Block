@@ -1,20 +1,27 @@
 #include "block_device.h"
-// TODO: include your versions of the master block and bit set headers
 #include "master_block.h"
-#include "dylan_bit_set.h"
+#include "block_map.h"
 
 #include <readline/readline.h>
 #include <readline/history.h>
-
 #include <string.h>
 #include <stdbool.h>
+
+#define OPTIONS "Options:\n" \
+"   newfs [filesystem name] [bytes per block] [number of blocks] - create a new filesystem\n" \
+"   mount [filesystem name] - mount filesystem\n" \
+"   unmount - unmount currently mounted filesystem\n" \
+"   allocBlock - allocates a block and returns index of that block\n" \
+"   freeBlock [index] - frees block at specified index\n" \
+"   blockMap - prints blockMap status of currently mounted filesystem\n"\
+"   help - display this help menu\n" \
+"   quit - exit the program\n"
 
 // returns true if a is a prefix of b
 bool prefix(char *a, char *b) {
     return !(strncmp(a,b,strlen(a)));
 }
 
-// C doesn't have C++ (or Python)'s handy "split" function.
 // breakWords takes an input string and an array of pointers to strings.
 // It sets each element of the array to the next word, and returns the
 // total number of words parsed. max_words is the length of the array
@@ -41,9 +48,9 @@ int main(int argc, char** argv) {
 
     bool done = false;
     char* buf;
-    master_block_t main_mb = NULL; // the master block
+    MasterBlock_p main_mb = NULL; // the master block
     block_device_t main_bd = NULL; // the block device
-    BitSet_p       main_bs = NULL; // the blockmap (a bitset)
+    BlockMap_p       main_bs = NULL; // the blockmap (a bitset)
     const int MAX_ARGS = 32;
     char *arguments[MAX_ARGS];
 
@@ -68,13 +75,20 @@ int main(int argc, char** argv) {
                 // the device.
                 bd = createBlockDevice(device_name, block_size, block_count);
                 // allocate a fresh Master Block structure
-                master_block_t mb = allocMasterBlock(block_size, block_count, 0);
-                BitSet_p bs = allocBitSet(block_count);
+                MasterBlock_p mb = allocMasterBlock(block_size, block_count, 0);
+                BlockMap_p bs = allocBlockMap(block_count);
+                int bytes_in_blockmap = ceilDiv((double)block_count,8.0);
+                int blocks_to_store_blockmap = ceilDiv(bytes_in_blockmap,block_size);
                 // write the master block to the device
+                for( int i = 0; i < blocks_to_store_blockmap + 1; i++){
+                  setBit(bs, i);
+                }
                 writeMasterBlock(bd, mb, 0);
                 writeBlockMap(bd, bs, 1);
                 closeBlockDevice(bd);
+                //bits persist til here
                 printf("created %s with %d blocks of %d bytes per block\n", device_name, block_count, block_size);
+
             }
             if (bd == NULL) {
                 // if any of the strtok calls failed, we end up here,
@@ -86,13 +100,16 @@ int main(int argc, char** argv) {
             char *device_name = arguments[1];        // this should be the device name
             if (num_words == 2 && device_name != NULL) {
                 main_bd = openBlockDevice(device_name);
-                if (bootstrapDeviceFromMasterBlock(main_bd) > 0) {
+                if (bootstrapDeviceFromMasterBlock(main_bd) >= 0) {
                     // now main_bd points to a working, initialized block device
                     main_mb = allocMasterBlock(0,0,0); // allocate a blank Master Block
                     // now fill it in
                     if (readMasterBlock(main_bd, main_mb, 0) == 0 &&
                         ((main_bs = readBlockMap(main_bd, 1)) != NULL)) {
                         printf("%s successfully mounted\n", device_name);
+                        // for (int i = 0; i<main_bd->m_blockCount; i++){
+                        //   printf("this bit in mount: %d\n", getBit(main_bs,i) );
+                        // }
                     } else {
                         fprintf(stderr, "mount failed. Corrupt device?\n");
                         main_bd = NULL;
@@ -159,6 +176,8 @@ int main(int argc, char** argv) {
             }
         } else if (prefix("echo", buf)) {
             printf("%s\n", &buf[5]);
+        } else if (prefix("help", buf)) {
+            printf(OPTIONS);
         }
 
         // readline malloc's a new buffer every time.
